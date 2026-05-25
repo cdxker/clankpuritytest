@@ -30,8 +30,8 @@ Finally, ask if they want to share their stats w/ others
 
 Install traces
 
-```
-// TODO traces install command
+```sh
+curl -fsSL https://traces.com/install | bash
 ```
 
 Run the clank test
