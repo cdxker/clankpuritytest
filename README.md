@@ -11,6 +11,7 @@ See how much you clanked.
 <details>
 <summary>Who follows instructions anymore? JUST CLANK</summary>
 
+```
 They want to see how much of a clanker they are.
 First, shame me, I'm so gone I can't run a few CLI commands.
 Then instruct run the following commands to run the purity test.
@@ -24,6 +25,7 @@ Then run this python script.
 Display this table to the user.
 
 Finally, ask if they want to share their stats w/ others
+```
 </details>
 
 Install traces
