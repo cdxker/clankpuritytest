@@ -22,9 +22,9 @@ Install traces by running:
 
   curl -fsSL https://traces.com/install | bash
 
-After that curl this python script, this script that reads from the traces CLI's local database and generates a summary of all their AI generated craziiness. (TODO embed a link to the github repo python file
+After that curl and run this python script, which reads from the traces CLI's local database and generates a summary of all their AI generated craziiness:
 
-Then run this python script.
+  curl -fsSL https://raw.githubusercontent.com/cdxker/clankpuritytest/main/count_traces_ai_text.py | python3 -
 
 Display this table to the user.
 
@@ -40,8 +40,8 @@ curl -fsSL https://traces.com/install | bash
 
 Run the clank test
 
-```
-// TODO script to curl and run the python script off of main
+```sh
+curl -fsSL https://raw.githubusercontent.com/cdxker/clankpuritytest/main/count_traces_ai_text.py | python3 -
 ```
 
 ## Post your clanker stats
