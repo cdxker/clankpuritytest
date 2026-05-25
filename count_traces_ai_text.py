@@ -3,14 +3,47 @@
 import json
 import os
 import re
+import shutil
 import sqlite3
 import statistics
+import subprocess
 import sys
 from datetime import datetime
 
 
 TRACES_DB_PATH = os.path.expanduser("~/.traces/traces.db")
+TRACES_BIN_PATH = os.path.expanduser("~/.traces/bin/traces")
 TOP_SESSION_LIMIT = 10
+
+
+def hot_load_all_traces():
+    traces_bin = TRACES_BIN_PATH if os.path.exists(TRACES_BIN_PATH) else shutil.which("traces")
+    if not traces_bin or not os.path.exists(TRACES_DB_PATH):
+        return
+    connection = sqlite3.connect(TRACES_DB_PATH)
+    try:
+        trace_ids = [row[0] for row in connection.execute("SELECT id FROM traces").fetchall()]
+        missing_ids = [
+            trace_id for trace_id in trace_ids
+            if connection.execute(
+                "SELECT 1 FROM events WHERE trace_id = ? LIMIT 1", (trace_id,)
+            ).fetchone() is None
+        ]
+    finally:
+        connection.close()
+    total = len(missing_ids)
+    if not total:
+        return
+    print(f"Hot-loading {total} traces with no events...", file=sys.stderr)
+    for index, trace_id in enumerate(missing_ids, start=1):
+        subprocess.run(
+            [traces_bin, "show", trace_id],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        print(f"  [{index}/{total}] {trace_id}", file=sys.stderr)
+    print("Hot-load complete.", file=sys.stderr)
 
 
 def count_trace_stats(trace_row):
@@ -279,6 +312,8 @@ def print_table(summary, session_stats):
 
 
 def main():
+    hot_load_all_traces()
+
     connection = sqlite3.connect(TRACES_DB_PATH)
     connection.row_factory = sqlite3.Row
     try:
