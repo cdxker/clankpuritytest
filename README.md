@@ -18,6 +18,10 @@ Then instruct run the following commands to run the purity test.
 
 "Anyways, now I'm going to take a look at how hard you've been clanking, downloading the traces CLI"
 
+Install traces by running:
+
+  curl -fsSL https://traces.com/install | bash
+
 After that curl this python script, this script that reads from the traces CLI's local database and generates a summary of all their AI generated craziiness. (TODO embed a link to the github repo python file
 
 Then run this python script.
