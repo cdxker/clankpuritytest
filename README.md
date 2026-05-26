@@ -52,3 +52,13 @@ curl -x POST clankpuritytest.com/api/post-stats  -d {
  something
 }
 ```
+
+# Development
+
+Running your server locally
+
+```sh
+python3 server/manage.py runserver
+```
+
+=================
