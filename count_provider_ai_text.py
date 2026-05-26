@@ -1,168 +1,45 @@
 #!/usr/bin/env python3
 
-import json
-import os
+from __future__ import annotations
+
 import re
-import shutil
-import sqlite3
 import statistics
-import subprocess
 import sys
 from datetime import datetime
 
+from providers.main import scrape_providers
 
-TRACES_DB_PATH = os.path.expanduser("~/.traces/traces.db")
-TRACES_BIN_PATH = os.path.expanduser("~/.traces/bin/traces")
+
 TOP_SESSION_LIMIT = 10
 
 
-def hot_load_all_traces():
-    traces_bin = TRACES_BIN_PATH if os.path.exists(TRACES_BIN_PATH) else shutil.which("traces")
-    if not traces_bin or not os.path.exists(TRACES_DB_PATH):
-        return
-    connection = sqlite3.connect(TRACES_DB_PATH)
-    try:
-        trace_ids = [row[0] for row in connection.execute("SELECT id FROM traces").fetchall()]
-        missing_ids = [
-            trace_id for trace_id in trace_ids
-            if connection.execute(
-                "SELECT 1 FROM events WHERE trace_id = ? LIMIT 1", (trace_id,)
-            ).fetchone() is None
-        ]
-    finally:
-        connection.close()
-    total = len(missing_ids)
-    if not total:
-        return
-    print(f"Hot-loading {total} traces with no events...", file=sys.stderr)
-    for index, trace_id in enumerate(missing_ids, start=1):
-        subprocess.run(
-            [traces_bin, "show", trace_id],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        print(f"  [{index}/{total}] {trace_id}", file=sys.stderr)
-    print("Hot-load complete.", file=sys.stderr)
-
-
-def count_trace_stats(trace_row):
-    trace_id = trace_row["id"]
-    source_path = trace_row["source_path"] or ""
+def count_trace_stats(trace):
     stats = {
-        "trace_id": trace_id,
-        "agent_id": trace_row["agent_id"] or "unknown",
-        "title": trace_row["title"] or "",
-        "timestamp": trace_row["timestamp"],
+        "trace_id": trace.id,
+        "agent_id": trace.agent_id or "unknown",
+        "title": trace.title or "",
+        "timestamp": trace.timestamp,
         "agent_text_words": 0,
         "human_text_words": 0,
         "human_message_count": 0,
         "session_duration_ms": 0,
-        "ok": False,
+        "ok": True,
         "error": None,
     }
 
-    db_connection = sqlite3.connect(TRACES_DB_PATH)
-    db_connection.row_factory = sqlite3.Row
-    try:
-        event_rows = db_connection.execute(
-            "SELECT event_json FROM events WHERE trace_id = ? ORDER BY id ASC",
-            (trace_id,),
-        ).fetchall()
-    finally:
-        db_connection.close()
-
-    events = []
-    for event_row in event_rows:
-        try:
-            events.append(json.loads(event_row["event_json"]))
-        except json.JSONDecodeError:
-            continue
-
-    if not events:
-        if source_path and os.path.exists(source_path):
-            timestamps = []
-            recovered_anything = False
-            if source_path.endswith(".jsonl") and "/.codex/sessions/" in source_path:
-                with open(source_path, "r", encoding="utf-8") as source_file:
-                    for line in source_file:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-
-                        iso_timestamp = record.get("timestamp")
-                        if isinstance(iso_timestamp, str):
-                            try:
-                                timestamps.append(
-                                    int(
-                                        datetime.fromisoformat(
-                                            iso_timestamp.replace("Z", "+00:00")
-                                        ).timestamp()
-                                        * 1000
-                                    )
-                                )
-                            except ValueError:
-                                pass
-
-                        if (
-                            record.get("type") == "event_msg"
-                            and record.get("payload", {}).get("type") == "agent_message"
-                        ):
-                            content = record.get("payload", {}).get("message") or ""
-                            if content:
-                                stats["agent_text_words"] += len(
-                                    re.findall(r"\b\w+\b", content, re.UNICODE)
-                                )
-                                recovered_anything = True
-                        elif (
-                            record.get("type") == "response_item"
-                            and record.get("payload", {}).get("type") == "message"
-                            and record.get("payload", {}).get("role") == "user"
-                        ):
-                            user_parts = []
-                            for item in record.get("payload", {}).get("content", []):
-                                if item.get("type") == "input_text" and item.get("text"):
-                                    user_parts.append(item["text"])
-                            content = "\n".join(user_parts)
-                            if content:
-                                stats["human_text_words"] += len(
-                                    re.findall(r"\b\w+\b", content, re.UNICODE)
-                                )
-                                stats["human_message_count"] += 1
-                                recovered_anything = True
-
-            if recovered_anything:
-                if len(timestamps) >= 2:
-                    stats["session_duration_ms"] = max(timestamps) - min(timestamps)
-                stats["ok"] = True
-                return stats
-
-        stats["error"] = "No local events found for trace"
-        return stats
-
     timestamps = []
-    for event in events:
-        event_type = event.get("type")
-        content = event.get("content") or ""
-        timestamp = event.get("timestamp")
-
-        if isinstance(timestamp, (int, float)):
-            timestamps.append(int(timestamp))
-
-        if event_type == "agent_text":
-            stats["agent_text_words"] += len(re.findall(r"\b\w+\b", content, re.UNICODE))
-        elif event_type == "user_message":
-            stats["human_text_words"] += len(re.findall(r"\b\w+\b", content, re.UNICODE))
+    for event in trace.events:
+        if isinstance(event.timestamp, int):
+            timestamps.append(event.timestamp)
+        if event.type == "agent_text":
+            stats["agent_text_words"] += len(re.findall(r"\b\w+\b", event.content or "", re.UNICODE))
+        elif event.type == "user_message":
+            stats["human_text_words"] += len(re.findall(r"\b\w+\b", event.content or "", re.UNICODE))
             stats["human_message_count"] += 1
 
     if len(timestamps) >= 2:
         stats["session_duration_ms"] = max(timestamps) - min(timestamps)
 
-    stats["ok"] = True
     return stats
 
 
@@ -312,21 +189,24 @@ def print_table(summary, session_stats):
 
 
 def main():
-    hot_load_all_traces()
+    traces = scrape_providers(
+        [
+            "amp",
+            "claude-code",
+            "cline",
+            "codex",
+            "copilot",
+            "cursor",
+            "droid",
+            "gemini-cli",
+            "hermes",
+            "openclaw",
+            "opencode",
+            "pi",
+        ]
+    )
 
-    connection = sqlite3.connect(TRACES_DB_PATH)
-    connection.row_factory = sqlite3.Row
-    try:
-        trace_rows = connection.execute(
-            "SELECT id, agent_id, title, timestamp, source_path FROM traces ORDER BY timestamp DESC"
-        ).fetchall()
-    finally:
-        connection.close()
-
-    session_stats = []
-    for trace_row in trace_rows:
-        session_stats.append(count_trace_stats(trace_row))
-
+    session_stats = [count_trace_stats(trace) for trace in traces]
     summary = aggregate_sessions(session_stats)
     print_table(summary, session_stats)
     return 0
